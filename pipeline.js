@@ -47,7 +47,7 @@ async function fetchArticles() {
       const itemRegex = /<item>([\s\S]*?)<\/item>/g;
       const titleRegex = /<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/;
       const descRegex = /<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>|<description>([\s\S]*?)<\/description>/;
-      const linkRegex = /<link>(.*?)<\/link>/;
+      const linkRegex = /<link>(?:<!\[CDATA\[)?(https?:\/\/[^<\]]+)(?:\]\]>)?<\/link>|<guid[^>]*>(https?:\/\/[^<]+)<\/guid>/;
 
       let match;
       let count = 0;
@@ -60,7 +60,7 @@ async function fetchArticles() {
         const title = (titleMatch?.[1] || titleMatch?.[2] || '').trim();
         let summary = (descMatch?.[1] || descMatch?.[2] || '').trim();
         summary = summary.replace(/<[^>]+>/g, '').trim().slice(0, 400);
-        const link = (linkMatch?.[1] || '').trim();
+        const link = (linkMatch?.[1] || linkMatch?.[2] || '').trim();
 
         if (!title || title.length < 10) continue;
 
