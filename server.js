@@ -31,7 +31,7 @@ function readJSON(filePath) {
 
 function runPipelineAsync() {
   console.log(`[${new Date().toISOString()}] Running pipeline...`);
-  runPipelineAsync()
+  runPipeline()
     .then(() => console.log(`[${new Date().toISOString()}] Pipeline complete.`))
     .catch(err => console.error('Pipeline failed:', err.message));
 }
@@ -140,7 +140,7 @@ app.post('/api/run-pipeline', (req, res) => {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   res.json({ message: 'Pipeline started' });
-  runPipelineAsync(); // run async after response
+  runPipeline(); // run async after response
 });
 
 // ─────────────────────────────────────────────
@@ -150,7 +150,7 @@ app.post('/api/run-pipeline', (req, res) => {
 
 cron.schedule('30 0 * * *', () => {
   console.log('Scheduled pipeline run starting...');
-  runPipelineAsync();
+  runPipeline();
 }, { timezone: 'UTC' });
 
 // ─────────────────────────────────────────────
@@ -167,6 +167,6 @@ app.listen(PORT, () => {
   const todayFile = path.join(DATA_DIR, `digest_${today}.json`);
   if (!fs.existsSync(todayFile)) {
     console.log('No data for today — running pipeline now...');
-    runPipelineAsync();
+    runPipeline();
   }
 });
