@@ -143,6 +143,60 @@ app.post('/api/run-pipeline', (req, res) => {
   runPipeline(); // run async after response
 });
 
+
+// All accumulated quizzes (from all dates)
+app.get('/api/quizzes/all', (req, res) => {
+  const { subject } = req.query;
+  const files = fs.readdirSync(DATA_DIR).filter(f => f.startsWith('quizzes_'));
+  let allQuizzes = [];
+
+  for (const file of files) {
+    const data = readJSON(path.join(DATA_DIR, file));
+    if (data) allQuizzes = allQuizzes.concat(data);
+  }
+
+  // Remove duplicates by question text
+  const seen = new Set();
+  allQuizzes = allQuizzes.filter(q => {
+    if (!q.question || seen.has(q.question)) return false;
+    seen.add(q.question);
+    return true;
+  });
+
+  // Filter by subject if provided
+  if (subject) {
+    allQuizzes = allQuizzes.filter(q =>
+      q.subject?.toLowerCase().includes(subject.toLowerCase())
+    );
+  }
+
+  // Sort by relevance score
+  allQuizzes.sort((a, b) => (b.upsc_relevance_score || 0) - (a.upsc_relevance_score || 0));
+
+  res.json({
+    count: allQuizzes.length,
+    quizzes: allQuizzes,
+  });
+});
+
+// Stats endpoint
+app.get('/api/stats', (req, res) => {
+  const articleFiles = fs.readdirSync(DATA_DIR).filter(f => f.startsWith('articles_'));
+  const quizFiles = fs.readdirSync(DATA_DIR).filter(f => f.startsWith('quizzes_'));
+
+  let totalQuizzes = 0;
+  for (const file of quizFiles) {
+    const data = readJSON(path.join(DATA_DIR, file));
+    if (data) totalQuizzes += data.length;
+  }
+
+  res.json({
+    totalDays: articleFiles.length,
+    totalQuizFiles: quizFiles.length,
+    estimatedQuestions: totalQuizzes,
+  });
+});
+
 // ─────────────────────────────────────────────
 // SCHEDULER — runs pipeline daily at 6 AM IST
 // IST = UTC+5:30, so 6 AM IST = 00:30 UTC
