@@ -62,8 +62,16 @@ async function fetchArticles() {
         const descMatch = item.match(descRegex);
         const linkMatch = item.match(linkRegex);
 
-        const title = (titleMatch?.[1] || titleMatch?.[2] || '').trim();
-        let summary = (descMatch?.[1] || descMatch?.[2] || '').trim();
+        const title = (titleMatch?.[1] || titleMatch?.[2] || '')
+                    .replace(/<!\[CDATA\[/g, '')
+                    .replace(/\]\]>/g, '')
+                    .trim();
+        let summary = (descMatch?.[1] || descMatch?.[2] || '')
+                    .replace(/<!\[CDATA\[/g, '')
+                    .replace(/\]\]>/g, '')
+                    .replace(/<[^>]+>/g, '')
+                    .trim()
+                    .slice(0, 400);
         summary = summary.replace(/<[^>]+>/g, '').trim().slice(0, 400);
         const rawLink = (linkMatch?.[1] || linkMatch?.[2] || '').trim();
         const link = rawLink.replace(/<![\[CDATA[\[]*/g, '').replace(/\]\]>/g, '').trim();
