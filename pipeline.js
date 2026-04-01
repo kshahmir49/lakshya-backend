@@ -8,11 +8,16 @@ const DATA_DIR = path.join(__dirname, 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
 
 const RSS_FEEDS = [
-  { name: 'The Hindu',        url: 'https://www.thehindu.com/news/national/feeder/default.rss' },
-  { name: 'PIB',              url: 'https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3' },
-  { name: 'Indian Express',   url: 'https://indianexpress.com/section/india/feed/' },
-  { name: 'Times of India',   url: 'https://timesofindia.indiatimes.com/rssfeeds/296589292.cms' },
-  { name: 'Hindustan Times',  url: 'https://www.hindustantimes.com/feeds/rss/india-news/rssfeed.xml' },
+  { name: 'The Hindu',          url: 'https://www.thehindu.com/news/national/feeder/default.rss' },
+  { name: 'The Hindu - Opinion',url: 'https://www.thehindu.com/opinion/feeder/default.rss' },
+  { name: 'PIB',                url: 'https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3' },
+  { name: 'Indian Express',     url: 'https://indianexpress.com/section/india/feed/' },
+  { name: 'Indian Express - Explained', url: 'https://indianexpress.com/section/explained/feed/' },
+  { name: 'Times of India',     url: 'https://timesofindia.indiatimes.com/rssfeeds/296589292.cms' },
+  { name: 'Hindustan Times',    url: 'https://www.hindustantimes.com/feeds/rss/india-news/rssfeed.xml' },
+  { name: 'Livemint',           url: 'https://www.livemint.com/rss/news' },
+  { name: 'Business Standard',  url: 'https://www.business-standard.com/rss/home_page_top_stories.rss' },
+  { name: 'Down To Earth',      url: 'https://www.downtoearth.org.in/rss/all' },
 ];
 
 const SUBJECTS = [
@@ -51,7 +56,7 @@ async function fetchArticles() {
 
       let match;
       let count = 0;
-      while ((match = itemRegex.exec(xml)) !== null && count < 8) {
+      while ((match = itemRegex.exec(xml)) !== null && count < 15) {
         const item = match[1];
         const titleMatch = item.match(titleRegex);
         const descMatch = item.match(descRegex);
