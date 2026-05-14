@@ -141,11 +141,6 @@ Rules for upsc_relevance_score:
 - Distribute scores realistically — most articles should score 50-75, only truly important ones above 85
 - NEVER give everything the same score — scores must vary based on actual exam importance
 
-Rules for quiz options:
-- correct_index must be randomized — do NOT always use index 1 (option B)
-- Distribute correct answers: sometimes 0 (A), sometimes 1 (B), sometimes 2 (C), sometimes 3 (D)
-- Across multiple questions, correct answers should be roughly evenly distributed
-
 Rules for key_facts:
 - Each fact must be SPECIFIC to THIS article — real numbers, real names, real decisions
 - Do NOT write generic statements like "Understanding X is important for UPSC"
@@ -179,7 +174,25 @@ Rules for quiz question:
   const jsonMatch = raw.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error(`No JSON found in response: ${raw.slice(0, 100)}`);
   const cleaned = jsonMatch[0];
-  return JSON.parse(cleaned);
+  const aiData = JSON.parse(cleaned);
+
+  // Randomize correct answer position so it's not always B
+  if (aiData.quiz && aiData.quiz.options && aiData.quiz.correct_index !== undefined) {
+    const options = aiData.quiz.options;
+    const correctAnswer = options[aiData.quiz.correct_index];
+    
+    // Shuffle options
+    for (let i = options.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [options[i], options[j]] = [options[j], options[i]];
+    }
+    
+    // Find where the correct answer ended up
+    aiData.quiz.correct_index = options.indexOf(correctAnswer);
+    aiData.quiz.options = options;
+  }
+
+  return aiData;
 }
 
 async function tagAndGenerate(articles) {
