@@ -127,11 +127,23 @@ Return ONLY valid JSON, no other text:
   ],
   "why_relevant": "<one specific sentence: which UPSC paper/topic this maps to, e.g. GS-III Economy: RBI monetary policy tools>",
   "quiz": {
-    "question": "<MCQ question based on a specific fact from this article>",
+    "question": "<Write a standalone MCQ question as if it appeared in a real UPSC Prelims paper. Never say 'according to the article' or 'as mentioned' — the question must make sense without reading the article. Test a specific fact, concept, or current event.>",
     "options": ["<option A>", "<option B>", "<option C>", "<option D>"],
     "correct_index": <0-3>,
     "explanation": "<2-3 sentences explaining the correct answer with context>"
   }
+  Rules for key_facts:
+  - Each fact must be SPECIFIC to THIS article — real numbers, real names, real decisions
+  - Do NOT write generic statements like "Understanding X is important for UPSC"
+  - Write facts like a crisp newspaper bullet: "RBI kept repo rate unchanged at 6.5% for 8th consecutive time"
+
+  Rules for quiz question:
+  - NEVER use phrases like "According to the article", "As per the article", "The article mentions"
+  - Write as a standalone exam question a student could answer from general knowledge
+  - Good format: "Which body was established under the Digital Personal Data Protection Act 2023?"
+  - Bad format: "According to the article, which body was established?"
+  - Question must test facts or concepts, not reading comprehension
+  - All 4 options should be plausible — no obviously wrong answers`;
 }
 
 Rules for key_facts:
