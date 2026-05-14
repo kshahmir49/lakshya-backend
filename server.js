@@ -219,8 +219,8 @@ app.listen(PORT, () => {
   // Run pipeline on startup if no data for today
   const today = todayString();
   const todayFile = path.join(DATA_DIR, `digest_${today}.json`);
-  if (!fs.existsSync(todayFile)) {
+  if (!fs.existsSync(todayFile) && process.env.RUN_PIPELINE_ON_START !== 'false') {
     console.log('No data for today — running pipeline now...');
-    runPipeline();
+    runPipelineAsync();
   }
 });

@@ -141,6 +141,11 @@ Rules for upsc_relevance_score:
 - Distribute scores realistically — most articles should score 50-75, only truly important ones above 85
 - NEVER give everything the same score — scores must vary based on actual exam importance
 
+Rules for quiz options:
+- correct_index must be randomized — do NOT always use index 1 (option B)
+- Distribute correct answers: sometimes 0 (A), sometimes 1 (B), sometimes 2 (C), sometimes 3 (D)
+- Across multiple questions, correct answers should be roughly evenly distributed
+
 Rules for key_facts:
 - Each fact must be SPECIFIC to THIS article — real numbers, real names, real decisions
 - Do NOT write generic statements like "Understanding X is important for UPSC"
