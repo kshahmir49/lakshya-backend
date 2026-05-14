@@ -56,7 +56,7 @@ async function fetchArticles() {
 
       let match;
       let count = 0;
-      while ((match = itemRegex.exec(xml)) !== null && count < 15) {
+      while ((match = itemRegex.exec(xml)) !== null && count < 20) {
         const item = match[1];
         const titleMatch = item.match(titleRegex);
         const descMatch = item.match(descRegex);
@@ -133,6 +133,13 @@ Return ONLY valid JSON, no other text:
     "explanation": "<2-3 sentences explaining the correct answer with context>"
   }
 }
+Rules for upsc_relevance_score:
+- Score 90-100: Supreme Court judgments, Constitutional issues, RBI/Budget/Finance Commission, major central government schemes, India-foreign policy decisions
+- Score 70-89: State government policies, economic data releases, international news with direct India angle
+- Score 50-69: General governance, environment policy, science & tech with India context
+- Score 0-49: Crime, sports, entertainment, celebrity, foreign news with no India angle
+- Distribute scores realistically — most articles should score 50-75, only truly important ones above 85
+- NEVER give everything the same score — scores must vary based on actual exam importance
 
 Rules for key_facts:
 - Each fact must be SPECIFIC to THIS article — real numbers, real names, real decisions

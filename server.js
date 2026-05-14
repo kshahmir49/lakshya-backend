@@ -62,7 +62,7 @@ app.get('/api/articles', (req, res) => {
   res.json({
     date: today,
     count: data.length,
-    articles: data.slice(0, 20),
+    articles: data.slice(0, 60),
   });
 });
 
