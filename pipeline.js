@@ -120,15 +120,26 @@ Return ONLY valid JSON, no other text:
   "exam_tags": ["<list from: ${EXAM_TAGS.join(', ')}>"],
   "upsc_relevance_score": <integer 0-100>,
   "upsc_relevance_label": "<Low / Medium / High / Very High>",
-  "key_facts": ["<fact 1>", "<fact 2>", "<fact 3>"],
-  "why_relevant": "<1 sentence>",
+  "key_facts": [
+    "<specific factual point from this article — numbers, names, decisions, dates>",
+    "<another specific fact — what happened, who decided, how much, when>",
+    "<third specific fact — policy detail, impact, background context>"
+  ],
+  "why_relevant": "<one specific sentence: which UPSC paper/topic this maps to, e.g. GS-III Economy: RBI monetary policy tools>",
   "quiz": {
-    "question": "<MCQ question>",
-    "options": ["<A>", "<B>", "<C>", "<D>"],
+    "question": "<MCQ question based on a specific fact from this article>",
+    "options": ["<option A>", "<option B>", "<option C>", "<option D>"],
     "correct_index": <0-3>,
-    "explanation": "<2-3 sentences>"
+    "explanation": "<2-3 sentences explaining the correct answer with context>"
   }
-}`;
+}
+
+Rules for key_facts:
+- Each fact must be SPECIFIC to THIS article — real numbers, real names, real decisions
+- Do NOT write generic statements like "Understanding X is important for UPSC"
+- Do NOT write "This article covers..." or "This is relevant because..."
+- Write facts like a crisp newspaper bullet: "RBI kept repo rate unchanged at 6.5% for 8th consecutive time"
+- Include percentages, dates, names where available`;
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
