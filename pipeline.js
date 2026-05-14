@@ -11,7 +11,7 @@ const RSS_FEEDS = [
   { name: 'The Hindu',              url: 'https://www.thehindu.com/news/national/feeder/default.rss' },
   { name: 'The Hindu - Opinion',    url: 'https://www.thehindu.com/opinion/feeder/default.rss' },
   { name: 'PIB',                    url: 'https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3' },
-  { name: 'Indian Express',         url: 'https://indianexpress.com/section/india/feed/' },
+  { name: 'Indian Express',     url: 'https://indianexpress.com/feed/' },
   { name: 'Indian Express - Explained', url: 'https://indianexpress.com/section/explained/feed/' },
   { name: 'Times of India',         url: 'https://timesofindia.indiatimes.com/rssfeeds/296589292.cms' },
   { name: 'Hindustan Times',        url: 'https://www.hindustantimes.com/feeds/rss/india-news/rssfeed.xml' },
