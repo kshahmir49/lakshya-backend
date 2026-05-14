@@ -157,17 +157,30 @@ Rules for key_facts:
 
   const data = await res.json();
   const raw = data.content?.[0]?.text?.trim() || '';
-  const cleaned = raw.replace(/```json|```/g, '').trim();
+  // Find JSON object even if there's text before/after it
+  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error(`No JSON found in response: ${raw.slice(0, 100)}`);
+  const cleaned = jsonMatch[0];
   return JSON.parse(cleaned);
 }
 
 async function tagAndGenerate(articles) {
-  console.log('\n[2/3] Tagging articles with AI...');
-  const tagged = [];
+    console.log('\n[2/3] Tagging articles with AI...');
+    const tagged = [];
 
-  for (let i = 0; i < articles.length; i++) {
+    for (let i = 0; i < articles.length; i++) {
     const article = articles[i];
-    console.log(`  Processing ${i + 1}/${articles.length}: ${article.title.slice(0, 60)}...`);
+
+    // Skip articles with no useful content
+    const skipKeywords = ['letters to the editor', 'corrections and clarifications', 
+      'obituary', 'advertisement', 'classifieds', 'weather'];
+    const titleLower = article.title.toLowerCase();
+    if (skipKeywords.some(k => titleLower.includes(k))) {
+      console.log(`  Skipping: ${article.title.slice(0, 50)}`);
+      continue;
+    }
+
+    console.log(`  Processing ${i + 1}/${articles.length}...`);
     try {
       const aiData = await tagArticle(article);
       tagged.push({ ...article, ...aiData });
