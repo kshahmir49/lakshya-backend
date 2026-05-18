@@ -259,12 +259,22 @@ app.post('/api/chat', async (req, res) => {
         // Simple keyword matching to find relevant articles
         contextArticles = allArticles
           .filter(a => {
-            if (!a.title || a.upsc_relevance_score < 40) return false;
+            if (!a.title || a.upsc_relevance_score < 20) return false;
             const titleLower = a.title.toLowerCase();
-            const words = userQuery.split(' ').filter(w => w.length > 3);
-            return words.some(w => titleLower.includes(w));
+            // Clean query and extract meaningful keywords
+            const stopWords = new Set(['what', 'when', 'where', 'which', 'about', 'latest', 'recent', 'tell', 'explain', 'give', 'that', 'this', 'with', 'from', 'have', 'does', 'more', 'news']);
+            const words = userQuery
+              .split(/\s+/)
+              .filter(w => w.length > 2 && !stopWords.has(w));
+
+            // Match if ANY keyword appears in title OR summary OR key_facts
+            return words.some(w => {
+              const content = `${titleLower} ${(a.summary || '').toLowerCase()} ${(a.key_facts || []).join(' ').toLowerCase()}`;
+              return content.includes(w);
+            });
           })
-          .slice(0, 4); // max 4 articles for cost control
+          .slice(0, 5); // max 4 articles for cost control
+          console.log(`Chat context: found ${contextArticles.length} relevant articles for query: "${userQuery}"`);
       }
 
       // Build context string from relevant articles
