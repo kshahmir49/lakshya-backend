@@ -198,6 +198,82 @@ app.get('/api/stats', (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// AI CHAT ENDPOINT
+// Add this to server.js before the scheduler section
+// ─────────────────────────────────────────────
+
+app.post('/api/chat', async (req, res) => {
+  const { messages, userId } = req.body;
+
+  if (!messages || !Array.isArray(messages)) {
+    return res.status(400).json({ error: 'Messages array required' });
+  }
+
+  // Rate limiting — 20 messages per user per day
+  const today = todayString();
+  const rateKey = `chat_${userId}_${today}`;
+  const countRaw = await new Promise(resolve => {
+    try { resolve(global._chatCounts?.[rateKey] || 0); } catch { resolve(0); }
+  });
+  if (!global._chatCounts) global._chatCounts = {};
+  const count = global._chatCounts[rateKey] || 0;
+  if (count >= 20) {
+    return res.status(429).json({
+      error: 'Daily limit reached',
+      message: 'You have used all 20 AI chat messages for today. Limit resets at midnight.'
+    });
+  }
+  global._chatCounts[rateKey] = count + 1;
+
+  const systemPrompt = `You are Lakshya AI, an expert tutor for Indian civil services exam preparation. You help aspirants preparing for UPSC (IAS/IPS/IFS), SSC CGL/CHSL, and State PSC examinations.
+
+Your capabilities:
+1. Answer questions on all UPSC/SSC/PSC topics: Polity, Economy, Geography, History, Environment, Science & Technology, International Relations, Social Issues, Defence, Ethics
+2. Explain current affairs and news articles in exam context
+3. Provide topic-wise study guidance and strategy
+4. Clarify concepts, give examples, and suggest what to study
+
+Rules:
+- Keep answers concise and exam-focused — aspirants need quick, clear answers
+- Always mention which GS paper or exam section is relevant (e.g. "GS-II, UPSC Mains")
+- If asked about non-exam topics (cricket, movies, personal advice), politely redirect to exam prep
+- Use bullet points for lists, keep explanations clear
+- When explaining news, always connect it to exam relevance`;
+
+  try {
+    // Keep only last 6 messages for cost control (3 exchanges)
+    const recentMessages = messages.slice(-6);
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 600,
+        system: systemPrompt,
+        messages: recentMessages,
+      }),
+    });
+
+    const data = await response.json();
+    if (data.error) throw new Error(data.error.message);
+
+    const reply = data.content?.[0]?.text || 'Sorry, I could not generate a response.';
+    const remaining = 20 - (global._chatCounts[rateKey] || 0);
+
+    res.json({ reply, remaining });
+  } catch (err) {
+    console.error('Chat error:', err.message);
+    res.status(500).json({ error: 'Chat failed', message: err.message });
+  }
+});
+
+
+// ─────────────────────────────────────────────
 // SCHEDULER — runs pipeline daily at 6 AM IST
 // IST = UTC+5:30, so 6 AM IST = 00:30 UTC
 // ─────────────────────────────────────────────
