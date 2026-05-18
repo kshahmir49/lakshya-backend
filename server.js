@@ -1,7 +1,6 @@
 const express = require('express');
 const cors = require('cors');
 const cron = require('node-cron');
-
 const fs = require('fs');
 const path = require('path');
 const { runPipeline } = require('./pipeline');
@@ -10,8 +9,60 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Local data dir as cache
 const DATA_DIR = path.join(__dirname, 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
+
+// ─────────────────────────────────────────────
+// FIRESTORE REST API
+// ─────────────────────────────────────────────
+
+const FIRESTORE_BASE = `https://firestore.googleapis.com/v1/projects/${process.env.FIREBASE_PROJECT_ID}/databases/(default)/documents`;
+const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY;
+
+async function firestoreSet(collection, docId, data) {
+  try {
+    const fields = {};
+    for (const [key, val] of Object.entries(data)) {
+      if (typeof val === 'string') fields[key] = { stringValue: val };
+      else if (typeof val === 'number') fields[key] = { integerValue: val };
+      else if (typeof val === 'boolean') fields[key] = { booleanValue: val };
+      else if (val === null) fields[key] = { nullValue: null };
+      else fields[key] = { stringValue: JSON.stringify(val) };
+    }
+    const url = `${FIRESTORE_BASE}/${collection}/${docId}?key=${FIREBASE_API_KEY}`;
+    await fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields }),
+    });
+  } catch (err) {
+    console.error('Firestore set error:', err.message);
+  }
+}
+
+async function firestoreGet(collection, docId) {
+  try {
+    const url = `${FIRESTORE_BASE}/${collection}/${docId}?key=${FIREBASE_API_KEY}`;
+    const res = await fetch(url);
+    const doc = await res.json();
+    if (!doc.fields) return null;
+    const obj = {};
+    for (const [key, val] of Object.entries(doc.fields)) {
+      const raw = val.stringValue ?? val.integerValue ?? val.booleanValue ?? null;
+      // Try to parse JSON strings (arrays/objects stored as strings)
+      if (typeof raw === 'string') {
+        try { obj[key] = JSON.parse(raw); } catch { obj[key] = raw; }
+      } else {
+        obj[key] = raw;
+      }
+    }
+    return obj;
+  } catch (err) {
+    console.error('Firestore get error:', err.message);
+    return null;
+  }
+}
 
 // ─────────────────────────────────────────────
 // HELPERS
@@ -22,17 +73,75 @@ function todayString() {
 }
 
 function readJSON(filePath) {
-  try {
-    return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-  } catch {
-    return null;
-  }
+  try { return JSON.parse(fs.readFileSync(filePath, 'utf-8')); } catch { return null; }
 }
+
+// Get articles — from local cache first, then Firestore
+async function getArticles(date) {
+  const localPath = path.join(DATA_DIR, `articles_${date}.json`);
+  if (fs.existsSync(localPath)) return readJSON(localPath);
+  // Fetch from Firestore
+  const doc = await firestoreGet('daily_data', `articles_${date}`);
+  if (doc?.articles) {
+    // Cache locally
+    fs.writeFileSync(localPath, JSON.stringify(doc.articles));
+    return doc.articles;
+  }
+  return null;
+}
+
+async function getQuizzes(date) {
+  const localPath = path.join(DATA_DIR, `quizzes_${date}.json`);
+  if (fs.existsSync(localPath)) return readJSON(localPath);
+  const doc = await firestoreGet('daily_data', `quizzes_${date}`);
+  if (doc?.quizzes) {
+    fs.writeFileSync(localPath, JSON.stringify(doc.quizzes));
+    return doc.quizzes;
+  }
+  return null;
+}
+
+async function getDigest(date) {
+  const localPath = path.join(DATA_DIR, `digest_${date}.json`);
+  if (fs.existsSync(localPath)) return readJSON(localPath);
+  const doc = await firestoreGet('daily_data', `digest_${date}`);
+  if (doc?.articles) {
+    fs.writeFileSync(localPath, JSON.stringify({ date, articles: doc.articles }));
+    return { date, articles: doc.articles };
+  }
+  return null;
+}
+
+// Save to both local and Firestore
+async function saveToFirestore(date, articles, quizzes, digest) {
+  console.log('Saving to Firestore...');
+  await Promise.all([
+    firestoreSet('daily_data', `articles_${date}`, { articles: JSON.stringify(articles), date, count: articles.length }),
+    firestoreSet('daily_data', `quizzes_${date}`, { quizzes: JSON.stringify(quizzes), date, count: quizzes.length }),
+    firestoreSet('daily_data', `digest_${date}`, { articles: JSON.stringify(digest), date }),
+    // Update index of available dates
+    firestoreSet('meta', 'dates', { dates: JSON.stringify([date]) }),
+  ]);
+  console.log(`Saved ${articles.length} articles and ${quizzes.length} quizzes to Firestore`);
+}
+
+// ─────────────────────────────────────────────
+// PIPELINE WRAPPER — saves to Firestore after run
+// ─────────────────────────────────────────────
 
 function runPipelineAsync() {
   console.log(`[${new Date().toISOString()}] Running pipeline...`);
   runPipeline()
-    .then(() => console.log(`[${new Date().toISOString()}] Pipeline complete.`))
+    .then(async () => {
+      console.log(`[${new Date().toISOString()}] Pipeline complete. Saving to Firestore...`);
+      const today = todayString();
+      const articles = readJSON(path.join(DATA_DIR, `articles_${today}.json`));
+      const quizzes = readJSON(path.join(DATA_DIR, `quizzes_${today}.json`));
+      const digestData = readJSON(path.join(DATA_DIR, `digest_${today}.json`));
+      if (articles && quizzes && digestData) {
+        await saveToFirestore(today, articles, quizzes, digestData.articles || digestData);
+      }
+    })
     .catch(err => console.error('Pipeline failed:', err.message));
 }
 
@@ -40,122 +149,44 @@ function runPipelineAsync() {
 // ROUTES
 // ─────────────────────────────────────────────
 
-// Health check
-app.get('/', (req, res) => {
-  res.json({ status: 'ok', app: 'Lakshya API', version: '1.0.0' });
+app.get('/', (req, res) => res.json({ status: 'ok', app: 'Lakshya API', version: '2.0.0' }));
+
+app.get('/api/articles', async (req, res) => {
+  const today = todayString();
+  const data = await getArticles(today);
+  if (!data) return res.status(404).json({ error: 'No articles for today yet.', date: today });
+  res.json({ date: today, count: data.length, articles: data.slice(0, 60) });
 });
 
-// Today's articles
-app.get('/api/articles', (req, res) => {
+app.get('/api/digest', async (req, res) => {
   const today = todayString();
-  const filePath = path.join(DATA_DIR, `articles_${today}.json`);
-  const data = readJSON(filePath);
-
-  if (!data) {
-    return res.status(404).json({
-      error: 'No articles for today yet. Pipeline may still be running.',
-      date: today,
-    });
-  }
-
-  // Return top 20 by relevance, already sorted by pipeline
-  res.json({
-    date: today,
-    count: data.length,
-    articles: data.slice(0, 60),
-  });
-});
-
-// Today's digest (top 10 for home screen)
-app.get('/api/digest', (req, res) => {
-  const today = todayString();
-  const filePath = path.join(DATA_DIR, `digest_${today}.json`);
-  const data = readJSON(filePath);
-
-  if (!data) {
-    return res.status(404).json({
-      error: 'No digest for today yet.',
-      date: today,
-    });
-  }
-
+  const data = await getDigest(today);
+  if (!data) return res.status(404).json({ error: 'No digest for today yet.', date: today });
   res.json(data);
 });
 
-// Today's quiz questions
-app.get('/api/quizzes', (req, res) => {
+app.get('/api/quizzes', async (req, res) => {
   const today = todayString();
-  const filePath = path.join(DATA_DIR, `quizzes_${today}.json`);
-  const data = readJSON(filePath);
-
-  if (!data) {
-    return res.status(404).json({
-      error: 'No quizzes for today yet.',
-      date: today,
-    });
-  }
-
-  // Optionally filter by subject
+  const data = await getQuizzes(today);
+  if (!data) return res.status(404).json({ error: 'No quizzes for today yet.', date: today });
   const { subject } = req.query;
-  const filtered = subject
-    ? data.filter(q => q.subject === subject)
-    : data;
-
-  res.json({
-    date: today,
-    count: filtered.length,
-    quizzes: filtered,
-  });
+  const filtered = subject ? data.filter(q => q.subject === subject) : data;
+  res.json({ date: today, count: filtered.length, quizzes: filtered });
 });
 
-// List all available dates
-app.get('/api/dates', (req, res) => {
-  const files = fs.readdirSync(DATA_DIR);
-  const dates = [...new Set(
-    files
-      .filter(f => f.startsWith('digest_'))
-      .map(f => f.replace('digest_', '').replace('.json', ''))
-  )].sort().reverse();
-
-  res.json({ dates });
-});
-
-// Articles for a specific date (for monthly archive)
-app.get('/api/articles/:date', (req, res) => {
-  const { date } = req.params;
-  const filePath = path.join(DATA_DIR, `articles_${date}.json`);
-  const data = readJSON(filePath);
-
-  if (!data) {
-    return res.status(404).json({ error: `No articles for ${date}` });
-  }
-
-  res.json({ date, count: data.length, articles: data });
-});
-
-// Manually trigger pipeline (protect this in production)
-app.post('/api/run-pipeline', (req, res) => {
-  const { secret } = req.body;
-  if (secret !== process.env.PIPELINE_SECRET) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  res.json({ message: 'Pipeline started' });
-  runPipeline(); // run async after response
-});
-
-
-// All accumulated quizzes (from all dates)
-app.get('/api/quizzes/all', (req, res) => {
+// All quizzes from all dates (cumulative bank)
+app.get('/api/quizzes/all', async (req, res) => {
   const { subject } = req.query;
-  const files = fs.readdirSync(DATA_DIR).filter(f => f.startsWith('quizzes_'));
   let allQuizzes = [];
 
+  // Read all local quiz files
+  const files = fs.readdirSync(DATA_DIR).filter(f => f.startsWith('quizzes_'));
   for (const file of files) {
     const data = readJSON(path.join(DATA_DIR, file));
     if (data) allQuizzes = allQuizzes.concat(data);
   }
 
-  // Remove duplicates by question text
+  // Deduplicate
   const seen = new Set();
   allQuizzes = allQuizzes.filter(q => {
     if (!q.question || seen.has(q.question)) return false;
@@ -163,133 +194,98 @@ app.get('/api/quizzes/all', (req, res) => {
     return true;
   });
 
-  // Filter by subject if provided
-  if (subject) {
-    allQuizzes = allQuizzes.filter(q =>
-      q.subject?.toLowerCase().includes(subject.toLowerCase())
-    );
-  }
-
-  // Sort by relevance score
+  if (subject) allQuizzes = allQuizzes.filter(q => q.subject?.includes(subject));
   allQuizzes.sort((a, b) => (b.upsc_relevance_score || 0) - (a.upsc_relevance_score || 0));
 
-  res.json({
-    count: allQuizzes.length,
-    quizzes: allQuizzes,
-  });
+  res.json({ count: allQuizzes.length, quizzes: allQuizzes });
 });
 
-// Stats endpoint
-app.get('/api/stats', (req, res) => {
-  const articleFiles = fs.readdirSync(DATA_DIR).filter(f => f.startsWith('articles_'));
-  const quizFiles = fs.readdirSync(DATA_DIR).filter(f => f.startsWith('quizzes_'));
-
-  let totalQuizzes = 0;
-  for (const file of quizFiles) {
-    const data = readJSON(path.join(DATA_DIR, file));
-    if (data) totalQuizzes += data.length;
-  }
-
-  res.json({
-    totalDays: articleFiles.length,
-    totalQuizFiles: quizFiles.length,
-    estimatedQuestions: totalQuizzes,
-  });
+app.get('/api/dates', async (req, res) => {
+  const files = fs.readdirSync(DATA_DIR).filter(f => f.startsWith('digest_'));
+  const dates = [...new Set(files.map(f => f.replace('digest_', '').replace('.json', '')))].sort().reverse();
+  res.json({ dates });
 });
 
 // ─────────────────────────────────────────────
-// AI CHAT ENDPOINT
-// Add this to server.js before the scheduler section
+// AI CHAT WITH WORKING RAG
 // ─────────────────────────────────────────────
 
 app.post('/api/chat', async (req, res) => {
   const { messages, userId } = req.body;
+  if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'Messages array required' });
 
-  if (!messages || !Array.isArray(messages)) {
-    return res.status(400).json({ error: 'Messages array required' });
-  }
-
-  // Rate limiting — 20 messages per user per day
-  const today = todayString();
-  const rateKey = `chat_${userId}_${today}`;
-  const countRaw = await new Promise(resolve => {
-    try { resolve(global._chatCounts?.[rateKey] || 0); } catch { resolve(0); }
-  });
+  // Rate limiting
   if (!global._chatCounts) global._chatCounts = {};
+  const rateKey = `chat_${userId}_${todayString()}`;
   const count = global._chatCounts[rateKey] || 0;
   if (count >= 20) {
-    return res.status(429).json({
-      error: 'Daily limit reached',
-      message: 'You have used all 20 AI chat messages for today. Limit resets at midnight.'
-    });
+    return res.status(429).json({ error: 'Daily limit reached', message: 'You have used all 20 messages for today. Resets at midnight.' });
   }
   global._chatCounts[rateKey] = count + 1;
 
+  // RAG — find relevant articles from today AND recent days
+  const userQuery = (messages[messages.length - 1]?.content || '').toLowerCase();
+  let contextArticles = [];
+
+  const stopWords = new Set(['what', 'when', 'where', 'which', 'about', 'latest', 'recent', 'tell', 'explain', 'give', 'that', 'this', 'with', 'from', 'have', 'does', 'more', 'news', 'the', 'and', 'for', 'are', 'was', 'its']);
+  const keywords = userQuery.split(/\s+/).filter(w => w.length > 2 && !stopWords.has(w));
+
+  console.log(`Chat RAG keywords: [${keywords.join(', ')}]`);
+
+  // Search last 3 days of articles
+  for (let i = 0; i < 3; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().split('T')[0];
+    const articles = await getArticles(dateStr);
+    if (!articles) continue;
+
+    const matches = articles.filter(a => {
+      if (!a.title) return false;
+      const content = [
+        a.title,
+        a.summary || '',
+        ...(a.key_facts || []),
+        a.why_relevant || '',
+      ].join(' ').toLowerCase();
+      return keywords.some(kw => content.includes(kw));
+    });
+
+    contextArticles = contextArticles.concat(matches);
+    if (contextArticles.length >= 5) break;
+  }
+
+  contextArticles = contextArticles.slice(0, 5);
+  console.log(`Chat RAG: found ${contextArticles.length} relevant articles`);
+
+  let newsContext = '';
+  if (contextArticles.length > 0) {
+    newsContext = `\n\nRECENT NEWS FROM LAKSHYA (today's articles — use these for current affairs questions):\n` +
+      contextArticles.map((a, i) =>
+        `[Article ${i+1}] "${a.title}" — ${a.source}, ${a.published}\nKey facts: ${(a.key_facts || []).join(' | ')}\nContext: ${a.why_relevant || ''}`
+      ).join('\n\n');
+  }
+
   const systemPrompt = `You are Lakshya AI, an expert civil services tutor for UPSC, SSC and State PSC aspirants.
 
-  CRITICAL RULE — Always include specific facts. Every response MUST contain:
-  - Exact years and dates (e.g. "passed in August 2023", "notified on September 1, 2025")
-  - Full names of people (ministers, judges, committee heads, bureaucrats)
-  - Full names of institutions (ministry name, court name, regulatory body)
-  - Actual numbers and statistics where relevant
-  - Names of specific provisions, sections, or clauses if applicable
+CRITICAL RULE — Always include specific facts. Every response MUST contain:
+- Exact years and dates
+- Full names of people (ministers, judges, committee heads)
+- Full names of institutions (ministry, court, regulatory body)
+- Actual numbers, statistics, penalty amounts
+- Names of specific provisions, sections, or acts
 
-  Style: Conversational but information-dense. Think of a UPSC topper explaining to a friend — friendly tone but packed with real facts. Not a story for entertainment, but a crisp briefing that feels like a conversation.
+Style: Conversational but information-dense. Like a UPSC topper briefing a friend — friendly but packed with real facts.
 
-  Structure for current affairs/legislation topics:
-  Start with what it is and why it came about. Then cover the key provisions with actual details. Name the ministry that introduced it, the year it was passed, who piloted it, any Supreme Court or committee involvement. End with which GS paper it maps to and the likely exam angle.
+For current affairs topics: Tell what happened, who was involved, key provisions/decisions, then the exam angle (which GS paper, likely question type).
 
-  Example of the level of detail required:
-  "The Digital Personal Data Protection Act was passed by Parliament in August 2023, introduced by IT Minister Ashwini Vaishnaw under the Ministry of Electronics and IT (MeitY). It replaced the IT Act 2000's Section 43A provisions on data protection. It establishes the Data Protection Board of India as the adjudicatory body with penalties up to Rs 250 crore. Key concepts: Data Fiduciary (companies collecting data), Data Principal (the citizen), and consent-based processing. For UPSC GS-II, expect questions on the Board's powers, exemptions given to the government, and comparison with GDPR."
+Formatting: Plain paragraphs only. No ##, **, ***, or markdown. Line breaks between paragraphs. Under 300 words.
 
-  Formatting: Plain paragraphs only. No ##, **, ***, or markdown symbols. Line breaks between paragraphs.
-  Under 300 words. If no recent news context is provided, use training knowledge but mention "as of my last update" so user knows it may not be the latest.`;
+IMPORTANT: If recent news context is provided below, use it as your PRIMARY source. Quote specific facts from those articles. If the context covers the query, answer entirely from it and mention the source. If no context matches, use training knowledge but say "Based on my training data (may not be the latest)..."${newsContext}`;
 
   try {
-    // Keep only last 6 messages for cost control (3 exchanges)
-    // Find relevant articles from today's data
-      const today = todayString();
-      const articlesPath = path.join(DATA_DIR, `articles_${today}.json`);
-      let contextArticles = [];
-
-      if (fs.existsSync(articlesPath)) {
-        const allArticles = readJSON(articlesPath) || [];
-        const userQuery = messages[messages.length - 1]?.content?.toLowerCase() || '';
-
-        // Simple keyword matching to find relevant articles
-        contextArticles = allArticles
-          .filter(a => {
-            if (!a.title || a.upsc_relevance_score < 20) return false;
-            const titleLower = a.title.toLowerCase();
-            // Clean query and extract meaningful keywords
-            const stopWords = new Set(['what', 'when', 'where', 'which', 'about', 'latest', 'recent', 'tell', 'explain', 'give', 'that', 'this', 'with', 'from', 'have', 'does', 'more', 'news']);
-            const words = userQuery
-              .split(/\s+/)
-              .filter(w => w.length > 2 && !stopWords.has(w));
-
-            // Match if ANY keyword appears in title OR summary OR key_facts
-            return words.some(w => {
-              const content = `${titleLower} ${(a.summary || '').toLowerCase()} ${(a.key_facts || []).join(' ').toLowerCase()}`;
-              return content.includes(w);
-            });
-          })
-          .slice(0, 5); // max 4 articles for cost control
-          console.log(`Chat context: found ${contextArticles.length} relevant articles for query: "${userQuery}"`);
-      }
-
-      // Build context string from relevant articles
-      let newsContext = '';
-      if (contextArticles.length > 0) {
-        newsContext = '\n\nRECENT NEWS CONTEXT (use this for accurate, up-to-date answers):\n' +
-          contextArticles.map(a =>
-            `- ${a.title} (${a.source}, ${a.published})\n  Key facts: ${(a.key_facts || []).join(' | ')}\n  UPSC angle: ${a.why_relevant || ''}`
-          ).join('\n\n');
-      }
-
-      // Keep only last 6 messages for cost control (3 exchanges)
-      const recentMessages = messages.slice(-6);
-
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const recentMessages = messages.slice(-6);
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -309,23 +305,28 @@ app.post('/api/chat', async (req, res) => {
 
     const reply = data.content?.[0]?.text || 'Sorry, I could not generate a response.';
     const remaining = 20 - (global._chatCounts[rateKey] || 0);
-
-    res.json({ reply, remaining });
+    res.json({ reply, remaining, articlesUsed: contextArticles.length });
   } catch (err) {
     console.error('Chat error:', err.message);
     res.status(500).json({ error: 'Chat failed', message: err.message });
   }
 });
 
+// Manual pipeline trigger
+app.post('/api/run-pipeline', (req, res) => {
+  const { secret } = req.body;
+  if (secret !== process.env.PIPELINE_SECRET) return res.status(401).json({ error: 'Unauthorized' });
+  res.json({ message: 'Pipeline started' });
+  runPipelineAsync();
+});
 
 // ─────────────────────────────────────────────
-// SCHEDULER — runs pipeline daily at 6 AM IST
-// IST = UTC+5:30, so 6 AM IST = 00:30 UTC
+// SCHEDULER — 6 AM IST daily
 // ─────────────────────────────────────────────
 
 cron.schedule('30 0 * * *', () => {
   console.log('Scheduled pipeline run starting...');
-  runPipeline();
+  runPipelineAsync();
 }, { timezone: 'UTC' });
 
 // ─────────────────────────────────────────────
@@ -333,15 +334,22 @@ cron.schedule('30 0 * * *', () => {
 // ─────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Lakshya API running on port ${PORT}`);
+app.listen(PORT, async () => {
+  console.log(`Lakshya API v2 running on port ${PORT}`);
   console.log(`Pipeline scheduled daily at 6:00 AM IST`);
 
-  // Run pipeline on startup if no data for today
-  const today = todayString();
-  const todayFile = path.join(DATA_DIR, `digest_${today}.json`);
-  if (!fs.existsSync(todayFile) && process.env.RUN_PIPELINE_ON_START !== 'false') {
-    console.log('No data for today — running pipeline now...');
-    runPipelineAsync();
+  if (process.env.RUN_PIPELINE_ON_START !== 'false') {
+    const today = todayString();
+    const todayFile = path.join(DATA_DIR, `digest_${today}.json`);
+    if (!fs.existsSync(todayFile)) {
+      // Try Firestore first
+      const doc = await getDigest(today);
+      if (!doc) {
+        console.log('No data for today — running pipeline now...');
+        runPipelineAsync();
+      } else {
+        console.log('Loaded today\'s data from Firestore cache');
+      }
+    }
   }
 });
