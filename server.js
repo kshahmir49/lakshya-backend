@@ -226,7 +226,7 @@ app.post('/api/chat', async (req, res) => {
   global._chatCounts[rateKey] = count + 1;
 
   const systemPrompt = `You are Lakshya AI, a friendly and knowledgeable tutor who helps Indian students prepare for civil services exams (UPSC, SSC, PSC).
-  
+
     Your personality:
     - Warm, engaging and conversational — like a brilliant senior who cleared UPSC and loves explaining things
     - Tell stories and give context, not just bullet points
@@ -245,13 +245,45 @@ app.post('/api/chat', async (req, res) => {
     - If you need to list things, write them naturally: "First... Second... Third..." or numbered like "1. ... 2. ..."
     - Keep responses under 250 words — be crisp and engaging, not exhaustive
 
-    Exam focus: Always connect your answer to UPSC/SSC/PSC relevance but do it naturally at the end, not as a separate robotic section.`;
+    Exam focus: Always connect your answer to UPSC/SSC/PSC relevance but do it naturally at the end, not as a separate robotic section.
+    If recent news context is provided above, prioritize it over your training data for current affairs questions. Always mention the source and date when using this context.
+    If no recent news context is provided, answer from your training knowledge but clearly mention "Based on my last update..." so the user knows it may not be the most recent information.`;
 
   try {
     // Keep only last 6 messages for cost control (3 exchanges)
-    const recentMessages = messages.slice(-6);
+    // Find relevant articles from today's data
+      const today = todayString();
+      const articlesPath = path.join(DATA_DIR, `articles_${today}.json`);
+      let contextArticles = [];
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      if (fs.existsSync(articlesPath)) {
+        const allArticles = readJSON(articlesPath) || [];
+        const userQuery = messages[messages.length - 1]?.content?.toLowerCase() || '';
+
+        // Simple keyword matching to find relevant articles
+        contextArticles = allArticles
+          .filter(a => {
+            if (!a.title || a.upsc_relevance_score < 40) return false;
+            const titleLower = a.title.toLowerCase();
+            const words = userQuery.split(' ').filter(w => w.length > 3);
+            return words.some(w => titleLower.includes(w));
+          })
+          .slice(0, 4); // max 4 articles for cost control
+      }
+
+      // Build context string from relevant articles
+      let newsContext = '';
+      if (contextArticles.length > 0) {
+        newsContext = '\n\nRECENT NEWS CONTEXT (use this for accurate, up-to-date answers):\n' +
+          contextArticles.map(a =>
+            `- ${a.title} (${a.source}, ${a.published})\n  Key facts: ${(a.key_facts || []).join(' | ')}\n  UPSC angle: ${a.why_relevant || ''}`
+          ).join('\n\n');
+      }
+
+      // Keep only last 6 messages for cost control (3 exchanges)
+      const recentMessages = messages.slice(-6);
+
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
