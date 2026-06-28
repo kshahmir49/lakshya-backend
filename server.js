@@ -13,12 +13,74 @@ app.use(express.json());
 const DATA_DIR = path.join(__dirname, 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
 
+const SUBJECTS = [
+  'Polity & Governance', 'Economy & Finance', 'Geography & Environment',
+  'History & Culture', 'Science & Technology', 'International Relations',
+  'Social Issues', 'Defence & Security'
+];
+
+function subjectKey(subject) {
+  return subject.replace(/[^a-zA-Z0-9]/g, '_');
+}
+
 // ─────────────────────────────────────────────
 // FIRESTORE REST API
 // ─────────────────────────────────────────────
 
 const FIRESTORE_BASE = `https://firestore.googleapis.com/v1/projects/${process.env.FIREBASE_PROJECT_ID}/databases/(default)/documents`;
 const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY;
+
+
+async function appendToSubjectArchive(articles) {
+  const bySubject = {};
+  for (const a of articles) {
+    const subj = a.subject || 'General';
+    if (!bySubject[subj]) bySubject[subj] = [];
+    bySubject[subj].push({
+      id: a.id,
+      title: a.title,
+      source: a.source,
+      published: a.published,
+      link: a.link,
+      upsc_relevance_score: a.upsc_relevance_score,
+      upsc_relevance_label: a.upsc_relevance_label,
+      key_facts: a.key_facts,
+      why_relevant: a.why_relevant,
+    });
+  }
+
+  for (const [subject, entries] of Object.entries(bySubject)) {
+    const key = subjectKey(subject);
+    const existing = await firestoreGet('subject_archive', key);
+    let list = existing?.entries || [];
+
+    list = [...entries, ...list];
+
+    // Dedup by id
+    const seen = new Set();
+    list = list.filter(e => {
+      if (seen.has(e.id)) return false;
+      seen.add(e.id);
+      return true;
+    });
+
+    // 6-month retention window
+    const cutoff = Date.now() - 180 * 24 * 60 * 60 * 1000;
+    list = list.filter(e => {
+      const t = new Date(e.published).getTime();
+      return isNaN(t) ? true : t >= cutoff;
+    });
+
+    // Safety cap for Firestore doc size (1MB limit)
+    list = list.slice(0, 600);
+
+    await firestoreSet('subject_archive', key, {
+      subject,
+      entries: JSON.stringify(list),
+      count: list.length,
+    });
+  }
+}
 
 async function firestoreSet(collection, docId, data) {
   try {
@@ -140,6 +202,7 @@ function runPipelineAsync() {
       const digestData = readJSON(path.join(DATA_DIR, `digest_${today}.json`));
       if (articles && quizzes && digestData) {
         await saveToFirestore(today, articles, quizzes, digestData.articles || digestData);
+        await appendToSubjectArchive(articles);
       }
     })
     .catch(err => console.error('Pipeline failed:', err.message));
@@ -148,6 +211,72 @@ function runPipelineAsync() {
 // ─────────────────────────────────────────────
 // ROUTES
 // ─────────────────────────────────────────────
+
+
+// Get full article archive for one subject
+app.get('/api/topics/:subject', async (req, res) => {
+  const key = subjectKey(req.params.subject);
+  const doc = await firestoreGet('subject_archive', key);
+  if (!doc?.entries) {
+    return res.json({ subject: req.params.subject, count: 0, articles: [] });
+  }
+  res.json({ subject: doc.subject, count: doc.entries.length, articles: doc.entries });
+});
+
+// Search across all subject archives
+app.get('/api/topics/search', async (req, res) => {
+  const q = (req.query.q || '').toLowerCase().trim();
+  if (!q) return res.json({ results: [] });
+
+  const keywords = q.split(/\s+/).filter(w => w.length > 2);
+  let results = [];
+
+  for (const subject of SUBJECTS) {
+    const doc = await firestoreGet('subject_archive', subjectKey(subject));
+    if (!doc?.entries) continue;
+
+    const matches = doc.entries
+      .filter(e => {
+        const content = `${e.title} ${(e.key_facts || []).join(' ')} ${e.why_relevant || ''}`.toLowerCase();
+        return keywords.some(k => content.includes(k));
+      })
+      .map(e => ({ ...e, subject }));
+
+    results = results.concat(matches);
+  }
+
+  results.sort((a, b) => new Date(b.published) - new Date(a.published));
+  res.json({ query: q, count: results.length, results: results.slice(0, 50) });
+});
+
+// Weighted quiz selection for a topic — 30 candidates returned,
+// app filters out recently-correct ones and picks 15
+app.get('/api/topics/:subject/quiz', (req, res) => {
+  const files = fs.readdirSync(DATA_DIR).filter(f => f.startsWith('quizzes_'));
+  let pool = [];
+  for (const file of files) {
+    const data = readJSON(path.join(DATA_DIR, file));
+    if (data) pool = pool.concat(data);
+  }
+
+  const subject = req.params.subject;
+  pool = pool.filter(q => q.subject === subject && q.question && q.options?.length === 4);
+
+  // Dedup
+  const seen = new Set();
+  pool = pool.filter(q => {
+    if (seen.has(q.question)) return false;
+    seen.add(q.question);
+    return true;
+  });
+
+  // Weight toward higher relevance — take top 60%, then shuffle
+  pool.sort((a, b) => (b.upsc_relevance_score || 0) - (a.upsc_relevance_score || 0));
+  const topPool = pool.slice(0, Math.max(30, Math.ceil(pool.length * 0.6)));
+  topPool.sort(() => Math.random() - 0.5);
+
+  res.json({ subject, count: topPool.length, quizzes: topPool.slice(0, 30) });
+});
 
 app.get('/', (req, res) => res.json({ status: 'ok', app: 'Lakshya API', version: '2.0.0' }));
 
