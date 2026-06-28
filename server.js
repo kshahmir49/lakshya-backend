@@ -32,8 +32,10 @@ const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY;
 
 
 async function appendToSubjectArchive(articles) {
+  const relevantArticles = articles.filter(a => (a.upsc_relevance_score || 0) >= 50);
+
   const bySubject = {};
-  for (const a of articles) {
+  for (const a of relevantArticles) {
     const subj = a.subject || 'General';
     if (!bySubject[subj]) bySubject[subj] = [];
     bySubject[subj].push({
