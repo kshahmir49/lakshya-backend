@@ -5,6 +5,16 @@ const fs = require('fs');
 const path = require('path');
 const { runPipeline } = require('./pipeline');
 
+const PYQS = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(__dirname, 'pyqs.json'), 'utf-8'));
+  } catch {
+    console.warn('pyqs.json not found, PYQ matching disabled');
+    return [];
+  }
+})();
+console.log(`Loaded ${PYQS.length} PYQs`);
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -210,6 +220,40 @@ function runPipelineAsync() {
     .catch(err => console.error('Pipeline failed:', err.message));
 }
 
+function findRelatedPYQs(article, maxResults = 3) {
+  if (!PYQS.length || !article?.title) return [];
+
+  // Build searchable text from the article
+  const articleText = [
+    article.title,
+    ...(article.key_facts || []),
+    article.why_relevant || '',
+  ].join(' ').toLowerCase();
+
+  const scored = PYQS.map(pyq => {
+    let score = 0;
+
+    // Keyword hits are the primary signal
+    for (const kw of (pyq.keywords || [])) {
+      if (articleText.includes(kw.toLowerCase())) {
+        // Longer keywords are more specific, weight them higher
+        score += kw.length > 10 ? 3 : kw.length > 6 ? 2 : 1;
+      }
+    }
+
+    // Same subject is a mild boost, not a qualifier on its own
+    if (pyq.subject === article.subject) score += 1;
+
+    return { pyq, score };
+  });
+
+  return scored
+    .filter(s => s.score >= 3)          // require real keyword overlap, not just same subject
+    .sort((a, b) => b.score - a.score)
+    .slice(0, maxResults)
+    .map(s => s.pyq);
+}
+
 // ─────────────────────────────────────────────
 // ROUTES
 // ─────────────────────────────────────────────
@@ -222,7 +266,11 @@ app.get('/api/topics/:subject', async (req, res) => {
   if (!doc?.entries) {
     return res.json({ subject: req.params.subject, count: 0, articles: [] });
   }
-  res.json({ subject: doc.subject, count: doc.entries.length, articles: doc.entries });
+  const entriesWithPYQs = doc.entries.map(a => ({
+     ...a,
+     related_pyqs: findRelatedPYQs(a),
+   }));
+  res.json({ subject: doc.subject, count: entriesWithPYQs.length, articles: entriesWithPYQs });
 });
 
 // Search across all subject archives
@@ -286,7 +334,11 @@ app.get('/api/articles', async (req, res) => {
   const today = todayString();
   const data = await getArticles(today);
   if (!data) return res.status(404).json({ error: 'No articles for today yet.', date: today });
-  res.json({ date: today, count: data.length, articles: data.slice(0, 60) });
+  const withPYQs = data.slice(0, 60).map(a => ({
+     ...a,
+     related_pyqs: findRelatedPYQs(a),
+   }));
+  res.json({ date: today, count: data.length, articles: withPYQs });
 });
 
 app.get('/api/digest', async (req, res) => {

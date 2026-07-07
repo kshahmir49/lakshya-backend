@@ -1,0 +1,87 @@
+[
+  {
+    "id": "pyq_2023_polity_01",
+    "year": 2023,
+    "exam": "UPSC Prelims",
+    "subject": "Polity & Governance",
+    "question": "Consider the following statements: 1. The Constitution of India classifies the ministers into four ranks. 2. The total number of ministers in the Union Council of Ministers shall not exceed 15 percent of the total number of members in the Lok Sabha. Which of the statements given above is/are correct?",
+    "options": ["1 only", "2 only", "Both 1 and 2", "Neither 1 nor 2"],
+    "correct_index": 1,
+    "keywords": ["council of ministers", "constitution", "lok sabha", "minister", "union cabinet", "91st amendment"]
+  },
+  {
+    "id": "pyq_2022_polity_01",
+    "year": 2022,
+    "exam": "UPSC Prelims",
+    "subject": "Polity & Governance",
+    "question": "With reference to anti-defection law in India, consider the following statements: 1. The law specifies that a nominated legislator cannot join any political party within six months of being appointed to the House. 2. The law does not provide any time-frame within which the presiding officer has to decide a defection case. Which of the statements given above is/are correct?",
+    "options": ["1 only", "2 only", "Both 1 and 2", "Neither 1 nor 2"],
+    "correct_index": 1,
+    "keywords": ["anti-defection", "tenth schedule", "speaker", "presiding officer", "defection", "legislator", "disqualification"]
+  },
+  {
+    "id": "pyq_2023_economy_01",
+    "year": 2023,
+    "exam": "UPSC Prelims",
+    "subject": "Economy & Finance",
+    "question": "With reference to the Indian economy, consider the following statements: 1. An increase in the Nominal Effective Exchange Rate (NEER) indicates the appreciation of the rupee. 2. An increase in the Real Effective Exchange Rate (REER) indicates an improvement in trade competitiveness. Which of the statements given above is/are correct?",
+    "options": ["1 only", "2 only", "Both 1 and 2", "Neither 1 nor 2"],
+    "correct_index": 0,
+    "keywords": ["exchange rate", "NEER", "REER", "rupee", "trade competitiveness", "RBI", "forex", "currency"]
+  },
+  {
+    "id": "pyq_2021_economy_01",
+    "year": 2021,
+    "exam": "UPSC Prelims",
+    "subject": "Economy & Finance",
+    "question": "With reference to Indian economy, demand-pull inflation can be caused/increased by which of the following? 1. Expansionary policies 2. Fiscal stimulus 3. Inflation-indexing wages 4. Higher purchasing power 5. Rising interest rates",
+    "options": ["1, 2 and 4 only", "3, 4 and 5 only", "1, 2, 3 and 5 only", "1, 2, 3, 4 and 5"],
+    "correct_index": 0,
+    "keywords": ["inflation", "demand-pull", "fiscal stimulus", "monetary policy", "purchasing power", "WPI", "CPI", "price rise"]
+  },
+  {
+    "id": "pyq_2023_environment_01",
+    "year": 2023,
+    "exam": "UPSC Prelims",
+    "subject": "Geography & Environment",
+    "question": "Consider the following statements regarding the Great Indian Bustard: 1. It is a critically endangered species. 2. It is found mainly in the grasslands of Rajasthan and Gujarat. 3. Overhead power transmission lines are a major threat to this species. Which of the statements given above are correct?",
+    "options": ["1 and 2 only", "2 and 3 only", "1 and 3 only", "1, 2 and 3"],
+    "correct_index": 3,
+    "keywords": ["great indian bustard", "critically endangered", "grasslands", "rajasthan", "gujarat", "power lines", "wildlife", "conservation", "IUCN"]
+  },
+  {
+    "id": "pyq_2022_ir_01",
+    "year": 2022,
+    "exam": "UPSC Prelims",
+    "subject": "International Relations",
+    "question": "With reference to the United Nations Security Council, consider the following statements: 1. India has served as a non-permanent member of the UNSC for eight terms. 2. Non-permanent members are elected for a term of two years. Which of the statements given above is/are correct?",
+    "options": ["1 only", "2 only", "Both 1 and 2", "Neither 1 nor 2"],
+    "correct_index": 2,
+    "keywords": ["UNSC", "security council", "united nations", "non-permanent member", "veto", "P5", "india UN"]
+  },
+  {
+    "id": "pyq_2023_scitech_01",
+    "year": 2023,
+    "exam": "UPSC Prelims",
+    "subject": "Science & Technology",
+    "question": "With reference to Digital Personal Data Protection frameworks, 'data fiduciary' refers to which of the following?",
+    "options": [
+      "The individual whose data is collected",
+      "The entity that determines the purpose and means of processing personal data",
+      "The government body that adjudicates data disputes",
+      "The third party to whom data is transferred"
+    ],
+    "correct_index": 1,
+    "keywords": ["data protection", "data fiduciary", "DPDP", "privacy", "personal data", "data principal", "MeitY", "digital india"]
+  },
+  {
+    "id": "pyq_2020_polity_02",
+    "year": 2020,
+    "exam": "UPSC Prelims",
+    "subject": "Polity & Governance",
+    "question": "With reference to the provisions of citizenship in the Constitution of India, consider the following statements: 1. Parliament has the power to regulate the right of citizenship by law. 2. The Citizenship Act specifies acquisition of citizenship by birth, descent, registration, naturalisation and incorporation of territory. Which of the statements given above is/are correct?",
+    "options": ["1 only", "2 only", "Both 1 and 2", "Neither 1 nor 2"],
+    "correct_index": 2,
+    "keywords": ["citizenship", "CAA", "citizenship act", "naturalisation", "article 11", "NRC", "passport", "foreigner"]
+  }
+]
