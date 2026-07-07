@@ -258,6 +258,44 @@ function findRelatedPYQs(article, maxResults = 3) {
 // ROUTES
 // ─────────────────────────────────────────────
 
+// Current ISO week id, e.g. "2026-W27" (Monday-based)
+function currentWeekId() {
+  const d = new Date();
+  const day = (d.getUTCDay() + 6) % 7;         // Monday = 0
+  d.setUTCDate(d.getUTCDate() - day + 3);      // nearest Thursday
+  const firstThursday = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+  const week = 1 + Math.round(((d - firstThursday) / 86400000 - 3 + ((firstThursday.getUTCDay() + 6) % 7)) / 7);
+  return `${d.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+
+// GET /api/leaderboard — top 50 this week
+app.get('/api/leaderboard', async (req, res) => {
+  try {
+    const weekId = currentWeekId();
+    const url = `${FIRESTORE_BASE}/leaderboard?pageSize=300&key=${FIREBASE_API_KEY}`;
+    const response = await fetch(url);
+    const data = await response.json();
+
+    const entries = (data.documents || [])
+      .map(doc => {
+        const f = doc.fields || {};
+        return {
+          uid: f.uid?.stringValue,
+          name: f.name?.stringValue || 'Aspirant',
+          week: f.week?.stringValue,
+          weeklyXP: parseInt(f.weeklyXP?.integerValue || '0'),
+        };
+      })
+      .filter(e => e.week === weekId && e.weeklyXP > 0)
+      .sort((a, b) => b.weeklyXP - a.weeklyXP)
+      .slice(0, 50)
+      .map((e, i) => ({ ...e, rank: i + 1 }));
+
+    res.json({ week: weekId, count: entries.length, leaderboard: entries });
+  } catch (err) {
+    res.status(500).json({ error: 'Leaderboard failed', message: err.message });
+  }
+});
 
 // Get full article archive for one subject
 app.get('/api/topics/:subject', async (req, res) => {
