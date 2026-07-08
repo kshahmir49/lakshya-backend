@@ -52,7 +52,10 @@ async function appendToSubjectArchive(articles) {
       id: a.id,
       title: a.title,
       source: a.source,
-      published: a.published,
+      published: (() => {
+        const t = new Date(a.published);
+        return isNaN(t) ? new Date().toISOString() : t.toISOString();
+      })(),
       link: a.link,
       upsc_relevance_score: a.upsc_relevance_score,
       upsc_relevance_label: a.upsc_relevance_label,
@@ -297,20 +300,6 @@ app.get('/api/leaderboard', async (req, res) => {
   }
 });
 
-// Get full article archive for one subject
-app.get('/api/topics/:subject', async (req, res) => {
-  const key = subjectKey(req.params.subject);
-  const doc = await firestoreGet('subject_archive', key);
-  if (!doc?.entries) {
-    return res.json({ subject: req.params.subject, count: 0, articles: [] });
-  }
-  const entriesWithPYQs = doc.entries.map(a => ({
-     ...a,
-     related_pyqs: findRelatedPYQs(a),
-   }));
-  res.json({ subject: doc.subject, count: entriesWithPYQs.length, articles: entriesWithPYQs });
-});
-
 // Search across all subject archives
 app.get('/api/topics/search', async (req, res) => {
   const q = (req.query.q || '').toLowerCase().trim();
@@ -335,6 +324,20 @@ app.get('/api/topics/search', async (req, res) => {
 
   results.sort((a, b) => new Date(b.published) - new Date(a.published));
   res.json({ query: q, count: results.length, results: results.slice(0, 50) });
+});
+
+// Get full article archive for one subject
+app.get('/api/topics/:subject', async (req, res) => {
+  const key = subjectKey(req.params.subject);
+  const doc = await firestoreGet('subject_archive', key);
+  if (!doc?.entries) {
+    return res.json({ subject: req.params.subject, count: 0, articles: [] });
+  }
+  const entriesWithPYQs = doc.entries.map(a => ({
+     ...a,
+     related_pyqs: findRelatedPYQs(a),
+   }));
+  res.json({ subject: doc.subject, count: entriesWithPYQs.length, articles: entriesWithPYQs });
 });
 
 // Weighted quiz selection for a topic — 30 candidates returned,
